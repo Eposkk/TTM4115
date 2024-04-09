@@ -8,17 +8,17 @@ from env import STATION_TOPIC, BOOTH_TOPIC, BROKER, PORT
 
 class Booth:
     def im_occupied(self, id):
-        print("imOccupied triggered! id: " +id)
-        self.mqtt_client.publish("group_10_quiz_answers", "buzzed was triggered!"+ id + " was first")
-    def on_question(self, id):
-        print("onQuestion triggered!")
-        #self.mqtt_client.publish("group_10_quiz_answers", "QuizMaster asked a question be the first to booth")
-    def on_idle(self, id):
-        print("onIdle triggered!")
-        #self.mqtt_client.publish("group_10_quiz_answers", "QuizMaster is idle")
+        print("im_occupied triggered! id: " +id)
+        self.mqtt_client.publish(BOOTH_TOPIC, {"msg": "occupied", "id": id})
+    def im_down(self, id):
+        print("im_down triggered!")
+        self.mqtt_client.publish(BOOTH_TOPIC, {"msg": "down", "id": id})
+    def im_ready(self, id):
+        print("im_ready triggered!")
+        self.mqtt_client.publish(BOOTH_TOPIC, {"msg": "ready", "id": id})
 
 # initial transition
-t0 = {"source": "initial", "target": "operative"}
+t0 = {"source": "initial", "target": "operative", "effect": "register(*)"}
 
 t1 = {
     "trigger": "occupied",
@@ -44,11 +44,11 @@ t3 = {
 t4 = {
     "trigger": "sys_err",
     "source": "operative",
-    "target": "operative"
+    "target": "out_of_order"
 }
 
 s = {
-    "name": "goal",
+    "name": "operative",
 }
 
 s1 = {
