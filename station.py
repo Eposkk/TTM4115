@@ -4,8 +4,7 @@ import json
 
 import paho.mqtt.client as mqtt
 
-STATION_TOPIC = "ntnu/group_10/station"
-BOOTH_TOPIC = "ntnu/group_10/booth"
+from env import STATION_TOPIC, BOOTH_TOPIC, BROKER, PORT
 
 
 class Station:
@@ -107,8 +106,6 @@ class MQTT_Client_1:
             print("Interrupted")
             self.client.disconnect()
 
-broker, port = "broker.hivemq.com", 1883
-
 station = Station()
 station_machine = Machine(transitions=[t0, t1, t2, t3, t4], states=[s, s1], obj=station, name="station")
 station.stm = station_machine
@@ -121,4 +118,4 @@ station.mqtt_client = myclient.client
 myclient.stm_driver = driver
 
 driver.start()
-myclient.start(broker, port)
+myclient.start(BROKER, PORT)
