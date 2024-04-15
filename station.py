@@ -1,22 +1,94 @@
 from stmpy import Driver, Machine
 from threading import Thread
-import json 
+import json
+import os
+import random
 
 import paho.mqtt.client as mqtt
 
-from env import STATION_TOPIC, BOOTH_TOPIC, BROKER, PORT
+from env import STATION_TOPIC, BOOTH_TOPIC, BROKER, PORT, DB_PATH
+
+
+class DB:
+    # Write a simple DB driver for reading and writing to a JSON file
+    def __init__(self):
+        self.charging_stations = {}
+        self.database_file = os.path.join(os.getcwd(), str(DB_PATH))
+        self.load()
+
+    def load(self):
+        try:
+            with open(self.database_file, "r") as file:
+                self.charging_stations = json.load(file)
+        except FileNotFoundError:
+            self.charging_stations = {}
+
+    def save(self):
+        with open(self.database_file, "w") as file:
+            json.dump(self.charging_stations, file)
+
+    def add_booth(self, booth_id):
+        self.charging_stations[booth_id] = {"status": "free"}
+        self.save()
+
+    def remove_booth(self, booth_id):
+        del self.charging_stations[booth_id]
+        self.save()
+
+    def set_booth_status(self, booth_id, status):
+        self.charging_stations[booth_id]["status"] = status
+        self.save()
+
+    def get_booth_status(self, booth_id):
+        return self.charging_stations[booth_id]["status"]
+
+    def generate_sample_data(self, num):
+        for i in range(num):
+            self.add_booth(i)
+
+    def generate_id(self):
+        id = 0
+        while str(id) in self.charging_stations:
+            id += 1
+        return str(id)
 
 
 class Station:
-    def im_occupied(self, id):
-        print("imOccupied triggered! id: " +id)
-        self.mqtt_client.publish("group_10_quiz_answers", "buzzed was triggered!"+ id + " was first")
-    def on_question(self, id):
-        print("onQuestion triggered!")
-        #self.mqtt_client.publish("group_10_quiz_answers", "QuizMaster asked a question be the first to station")
-    def on_idle(self, id):
-        print("onIdle triggered!")
-        #self.mqtt_client.publish("group_10_quiz_answers", "QuizMaster is idle")
+    def __init__(self):
+        self.DB = DB()
+        self.stm = None
+        self.mqtt_client = None
+
+    def im_occupied(self, args):
+        id = args[0]
+        print("imOccupied triggered! id: " + id)
+        self.DB.set_booth_status(id, "occupied")
+        self.mqtt_client.publish(STATION_TOPIC, {"msg": "occupied", "id": id})
+
+    def im_down(self, args):
+        id = args[0]
+        print("imDown triggered!")
+        self.DB.set_booth_status(id, "occupied")
+        self.mqtt_client.publish(STATION_TOPIC, {"msg": "down", "id": id})
+
+    def im_ready(self, args):
+        id = args[0]
+        print("imReady triggered!")
+        self.DB.set_booth_status(id, "ready")
+        self.mqtt_client.publish(STATION_TOPIC, {"msg": "ready", "id": id})
+
+    def im_error(self):
+        print("Station has an error")
+        self.mqtt_client.publish(STATION_TOPIC, {"msg": "Station is down"})
+
+    def register_booth(self, args):
+        one_time_id = args[0]
+        id = self.DB.generate_id()
+        self.DB.add_booth(id)
+        self.mqtt_client.publish(
+            BOOTH_TOPIC, {"msg": "registered", "id": id, "one_time_id": one_time_id}
+        )
+
 
 # initial transition
 t0 = {"source": "initial", "target": "operative"}
@@ -25,27 +97,35 @@ t1 = {
     "trigger": "occupied",
     "source": "operative",
     "target": "operative",
-    "effect": "im_occupied(*)"
+    "effect": "im_occupied(*)",
 }
 
 t2 = {
     "trigger": "down",
     "source": "operative",
     "target": "operative",
-    "effect" : "im_down(*)"
+    "effect": "im_down(*)",
 }
 
 t3 = {
     "trigger": "ready",
     "source": "operative",
     "target": "operative",
-    "effect" : "im_ready(*)"
+    "effect": "im_ready(*)",
 }
 
 t4 = {
     "trigger": "sys_err",
     "source": "operative",
-    "target": "operative"
+    "target": "out_of_order",
+    "effect": "im_error(*)",
+}
+
+t5 = {
+    "trigger": "register_booth",
+    "source": "operative",
+    "target": "operative",
+    "effect": "register_booth(*)",
 }
 
 s = {
@@ -55,9 +135,6 @@ s = {
 s1 = {
     "name": "out_of_order",
 }
-
-
-
 
 
 class MQTT_Client_1:
@@ -71,25 +148,33 @@ class MQTT_Client_1:
         print("on_connect(): {}".format(mqtt.connack_string(rc)))
 
     def on_message(self, client, userdata, msg):
-        
+
         payload = json.loads(msg.payload)
 
         print("on_message(): topic: {}, message: {}".format(msg.topic, payload["msg"]))
-        if(payload["msg"] != "station" and payload["msg"] != "occupied" and payload["msg"] != "down" and payload["msg"] != "ready"):
+        if (
+            payload["msg"] != "station"
+            and payload["msg"] != "occupied"
+            and payload["msg"] != "down"
+            and payload["msg"] != "ready"
+            and payload["msg"] != "register"
+        ):
             print(payload["msg"] + " is not a valid message ignoring")
-        
+
         else:
 
-            if(payload["msg"] == "occupied"):
+            if payload["msg"] == "occupied":
                 self.stm_driver.send("occupied", "station", args=[payload["id"]])
-            elif(payload["msg"] == "down"):
+            elif payload["msg"] == "down":
                 self.stm_driver.send("down", "station", args=[payload["id"]])
-            elif(payload["msg"] == "ready"):
+            elif payload["msg"] == "ready":
                 self.stm_driver.send("ready", "station", args=[payload["id"]])
+            elif payload["msg"] == "register":
+                self.stm_driver.send(
+                    "register_booth", "station", args=[payload["one_time_id"]]
+                )
             else:
                 print("This should not happen")
-        #self.stm_driver.send(payload["msg"],"buzzer")
-
 
     def start(self, broker, port):
 
@@ -106,8 +191,11 @@ class MQTT_Client_1:
             print("Interrupted")
             self.client.disconnect()
 
+
 station = Station()
-station_machine = Machine(transitions=[t0, t1, t2, t3, t4], states=[s, s1], obj=station, name="station")
+station_machine = Machine(
+    transitions=[t0, t1, t2, t3, t4], states=[s, s1], obj=station, name="station"
+)
 station.stm = station_machine
 
 driver = Driver()
