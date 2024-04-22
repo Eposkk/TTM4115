@@ -52,6 +52,14 @@ class DB:
         while str(id) in self.charging_stations:
             id += 1
         return str(id)
+    
+    def get_available_booths(self):
+        available = 0
+        for booth in self.charging_stations:
+            if self.charging_stations[booth]["status"] == "ready":
+                available += 1
+        return available
+
 
 
 class Station:
@@ -83,7 +91,7 @@ class Station:
 
     def im_error(self):
         print("Station has an error")
-        self.mqtt_client.publish(STATION_TOPIC, json.dumps({"msg": "Station is down"}))
+        self.mqtt_client.publish(STATION_TOPIC + "/info", json.dumps({"msg": "Station is down"}))
         self._send_status()
 
     def register_booth(self, *args):
@@ -100,6 +108,10 @@ class Station:
         id = args[0]
         self.DB.remove_booth(id)
         self._send_status()
+    
+    def get_available_booths(self):
+        self.mqtt_client.publish(STATION_TOPIC + "/info", json.dumps({"total": str(len(self.DB.charging_stations)),
+                                                             "available": str(self.DB.get_available_booths())}))
 
 
 # initial transition
@@ -146,6 +158,12 @@ t6 = {
     "target": "operative",
     "effect": "remove_booth(*)",
 }
+t6 = {
+    "trigger": "status",
+    "source": "operative",
+    "target": "operative",
+    "effect": "get_available_booths",
+}
 
 s = {
     "name": "opeartive",
@@ -178,6 +196,7 @@ class MQTT_Client_1:
             and payload["msg"] != "ready"
             and payload["msg"] != "register_booth"
             and payload["msg"] != "remove_booth"
+            and payload["msg"] != "status"
         ):
             print(payload["msg"] + " is not a valid message ignoring")
 
@@ -195,6 +214,8 @@ class MQTT_Client_1:
                 )
             elif payload["msg"] == "remove_booth":
                 self.stm_driver.send("remove_booth", "station", args=[payload["id"]])
+            elif payload["msg"] == "status":
+                self.stm_driver.send("status", "station")
             else:
                 print("This should not happen")
 

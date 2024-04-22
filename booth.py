@@ -1,7 +1,8 @@
 from stmpy import Driver, Machine
 from threading import Thread
 import json
-
+import random
+import math
 import paho.mqtt.client as mqtt
 from env import STATION_TOPIC, BOOTH_TOPIC, BROKER, PORT
 import uuid
@@ -9,10 +10,12 @@ import atexit
 
 
 class Booth:
-    def __init__(self):
+    def __init__(self, mw_effect = 30):
         self.Id = None
+        self.mw_effect = mw_effect
         self.one_time_id = uuid.uuid4()
         self.mqtt_client = None
+        self.wanted_percentage = 0
         print("onetimeid" + str(self.one_time_id))
 
     def send_message(self, msg):
@@ -62,10 +65,35 @@ class Booth:
 
     def releasePwR(self):
         print("releasePwR triggered!")
+    
+    def request(self, *args):
+        self.wanted_percentage = args[0]
+        print(self.wanted_percentage)
 
     def reset_booth(self):
         self.mqtt_client.publish(
             STATION_TOPIC, json.dumps({"msg": "remove_booth", "id": str(self.Id)})
+        )
+
+    def init_charger(self):
+        print("charger is being initiliazed")
+        battery_max_kwh = random.randint(30, 70)
+        max_percent = 40
+        if self.wanted_percentage <= 40 and self.wanted_percentage > 10:
+            max_percent = self.wanted_percentage - 5
+        percentage = random.randint(5, max_percent) / 100
+        goal = math.floor(battery_max_kwh * self.wanted_percentage / 100)
+        start_battery_kwh = math.floor(battery_max_kwh * percentage)
+        charging_time = ((goal - start_battery_kwh) / self.mw_effect) * 1000 * 60 # minutes instead of hours 
+        self.stm.start_timer("gn", charging_time)
+        print(str((goal - start_battery_kwh) / self.mw_effect) + " minutes (hours) of charging")
+        print(self.stm.get_timer("gn"))
+    
+    def time_left(self):
+        print("finding total time left")
+        self.mqtt_client.publish(
+            STATION_TOPIC + "/" + self.Id,
+            json.dumps({"msg": "time_left", "minutes": str(self.stm.get_timer("gn") / 1000 / 60)}),
         )
 
 
@@ -96,9 +124,9 @@ te3 = {
     "target": "out_of_order",
 }
 
-t4 = {"trigger": "req", "source": "standby", "target": "connecting"}
+t4 = {"trigger": "req", "source": "standby", "target": "connecting", "effect": "request(*)"}
 
-t5 = {"trigger": "ce", "source": "connecting", "target": "charging"}
+t5 = {"trigger": "ce", "source": "connecting", "target": "charging", "effect": "send_message('occupied'); init_charger"}
 
 t6 = {"trigger": "gn", "source": "charging", "target": "goal_reached"}
 
@@ -117,6 +145,16 @@ t9 = {
     "target": "standby",
     "effect": "reset_booth",
 }
+t10 = {
+    "trigger": "status",
+    "source": "charging",
+    "target": "charging",
+    "effect": "time_left",
+}
+t11 = {"trigger": "retry",
+       "source": "waiting",
+       "target": "waiting",
+       "effect": "register"}
 
 s = {
     "name": "standby",
@@ -125,6 +163,7 @@ s = {
 
 s0 = {
     "name": "waiting",
+    "entry": "start_timer('retry', 5000)"
 }
 
 s1 = {
@@ -134,7 +173,6 @@ s1 = {
 
 s2 = {
     "name": "charging",
-    "entry": "send_message('occupied'); start_timer('gn', 5000)",
 }
 
 s3 = {"name": "connecting", "entry": "start_timer('ce', 5000)"}
@@ -167,6 +205,7 @@ class MQTT_Client_1:
             and payload["msg"] != "cl"
             and payload["msg"] != "err"
             and payload["msg"] != "reset"
+            and payload["msg"] != "status"
         ):
             print(payload["msg"] + " is not a valid message ignoring")
         elif (msg.topic == str(BOOTH_TOPIC) + str(self.topic_id)):
@@ -184,7 +223,7 @@ class MQTT_Client_1:
             match payload["msg"]:
                 case "req":
                     print("request")
-                    self.stm_driver.send("req", "booth")
+                    self.stm_driver.send("req", "booth", args=[payload["percentage"]])
                 case "ce":
                     print("comlink established")
                     self.stm_driver.send("ce", "booth")
@@ -194,18 +233,14 @@ class MQTT_Client_1:
                 case "cl":
                     print("comlink lost")
                     self.stm_driver.send("cl", "booth")
-                case "registered":
-                    print("registered")
-                    self.stm_driver.send(
-                        "registered",
-                        "booth",
-                        args=[payload["one_time_id"], payload["id"]],
-                    )
                 case "err":
                     self.stm_driver.send("err", "booth")
                 case "reset":
                     print("reset")
                     self.stm_driver.send("reset", "booth")
+                case "status":
+                    print("status")
+                    self.stm_driver.send("status", "booth")
                 case _:
                     print("This topic does not listen to that msg")
 
@@ -227,7 +262,7 @@ class MQTT_Client_1:
 
 booth = Booth()
 booth_machine = Machine(
-    transitions=[t0, te, te1, te2, te3, t4, t5, t6, t7, t8, t9],
+    transitions=[t0, te, te1, te2, te3, t4, t5, t6, t7, t8, t9, t10, t11],
     states=[s, s1, s2, s3, s4],
     obj=booth,
     name="booth",
