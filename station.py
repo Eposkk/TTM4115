@@ -13,6 +13,7 @@ class DB:
     # Write a simple DB driver for reading and writing to a JSON file
     def __init__(self):
         self.charging_stations = {}
+        print("DB_PATH: " + str(DB_PATH))
         self.database_file = os.path.join(os.getcwd(), str(DB_PATH))
         self.load()
 
@@ -59,35 +60,46 @@ class Station:
         self.stm = None
         self.mqtt_client = None
 
-    def im_occupied(self, args):
+    def _send_status(self):
+        print("This should send status to all listeners apps")
+
+    def im_occupied(self, *args):
         id = args[0]
         print("imOccupied triggered! id: " + id)
         self.DB.set_booth_status(id, "occupied")
-        self.mqtt_client.publish(STATION_TOPIC, {"msg": "occupied", "id": id})
+        self._send_status()
 
-    def im_down(self, args):
+    def im_down(self, *args):
         id = args[0]
         print("imDown triggered!")
-        self.DB.set_booth_status(id, "occupied")
-        self.mqtt_client.publish(STATION_TOPIC, {"msg": "down", "id": id})
+        self.DB.set_booth_status(id, "down")
+        self._send_status()
 
-    def im_ready(self, args):
+    def im_ready(self, *args):
         id = args[0]
         print("imReady triggered!")
         self.DB.set_booth_status(id, "ready")
-        self.mqtt_client.publish(STATION_TOPIC, {"msg": "ready", "id": id})
+        self._send_status()
 
     def im_error(self):
         print("Station has an error")
-        self.mqtt_client.publish(STATION_TOPIC, {"msg": "Station is down"})
+        self.mqtt_client.publish(STATION_TOPIC, json.dumps({"msg": "Station is down"}))
+        self._send_status()
 
-    def register_booth(self, args):
+    def register_booth(self, *args):
         one_time_id = args[0]
         id = self.DB.generate_id()
         self.DB.add_booth(id)
         self.mqtt_client.publish(
-            BOOTH_TOPIC, {"msg": "registered", "id": id, "one_time_id": one_time_id}
+            BOOTH_TOPIC,
+            json.dumps({"msg": "registered", "id": id, "one_time_id": one_time_id}),
         )
+        self._send_status()
+
+    def remove_booth(self, *args):
+        id = args[0]
+        self.DB.remove_booth(id)
+        self._send_status()
 
 
 # initial transition
@@ -128,6 +140,13 @@ t5 = {
     "effect": "register_booth(*)",
 }
 
+t6 = {
+    "trigger": "remove_booth",
+    "source": "operative",
+    "target": "operative",
+    "effect": "remove_booth(*)",
+}
+
 s = {
     "name": "opeartive",
 }
@@ -157,7 +176,8 @@ class MQTT_Client_1:
             and payload["msg"] != "occupied"
             and payload["msg"] != "down"
             and payload["msg"] != "ready"
-            and payload["msg"] != "register"
+            and payload["msg"] != "register_booth"
+            and payload["msg"] != "remove_booth"
         ):
             print(payload["msg"] + " is not a valid message ignoring")
 
@@ -169,10 +189,12 @@ class MQTT_Client_1:
                 self.stm_driver.send("down", "station", args=[payload["id"]])
             elif payload["msg"] == "ready":
                 self.stm_driver.send("ready", "station", args=[payload["id"]])
-            elif payload["msg"] == "register":
+            elif payload["msg"] == "register_booth":
                 self.stm_driver.send(
                     "register_booth", "station", args=[payload["one_time_id"]]
                 )
+            elif payload["msg"] == "remove_booth":
+                self.stm_driver.send("remove_booth", "station", args=[payload["id"]])
             else:
                 print("This should not happen")
 
@@ -194,7 +216,10 @@ class MQTT_Client_1:
 
 station = Station()
 station_machine = Machine(
-    transitions=[t0, t1, t2, t3, t4], states=[s, s1], obj=station, name="station"
+    transitions=[t0, t1, t2, t3, t4, t5, t6],
+    states=[s, s1],
+    obj=station,
+    name="station",
 )
 station.stm = station_machine
 
