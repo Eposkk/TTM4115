@@ -49,8 +49,9 @@ class Booth:
                 + " Gotten one time: "
                 + str(one_time_id)
             )
+        self.mqtt_client.subscribe(str(BOOTH_TOPIC) + "/" + str(self.Id))
+        print("subscribed to: " + str(BOOTH_TOPIC) + "/" + str(self.Id))
         atexit.register(self.reset_booth)
-        self.
 
     def register(self):
         print("register triggered!")
@@ -142,18 +143,19 @@ s4 = {"name": "goal_reached", "entry": "releasePwR"}
 
 
 class MQTT_Client_1:
-    def __init__(self, topicId=""):
+    def __init__(self, topic_id=""):
         self.count = 0
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
-        self.topicId = topicId
+        self.topic_id = topic_id
 
     def on_connect(self, client, userdata, flags, rc):
         print("on_connect(): {}".format(mqtt.connack_string(rc)))
 
     def on_message(self, client, userdata, msg):
 
+        print(msg)
         payload = json.loads(msg.payload)
 
         print("on_message(): topic: {}, message: {}".format(msg.topic, payload["msg"]))
@@ -167,6 +169,17 @@ class MQTT_Client_1:
             and payload["msg"] != "reset"
         ):
             print(payload["msg"] + " is not a valid message ignoring")
+        elif (msg.topic == str(BOOTH_TOPIC) + str(self.topic_id)):
+            match payload["msg"]:
+                case "registered":
+                    print("registered")
+                    self.stm_driver.send(
+                        "registered",
+                        "booth",
+                        args=[payload["one_time_id"], payload["id"]],
+                    )
+                case _:
+                    print("Error, this topic only lists to registered")
         else:
             match payload["msg"]:
                 case "req":
@@ -193,13 +206,15 @@ class MQTT_Client_1:
                 case "reset":
                     print("reset")
                     self.stm_driver.send("reset", "booth")
+                case _:
+                    print("This topic does not listen to that msg")
 
     def start(self, broker, port):
 
         print("Connecting to {}:{}".format(broker, port))
         self.client.connect(broker, port)
 
-        self.client.subscribe(str(BOOTH_TOPIC) + str(self.topicId))
+        self.client.subscribe(str(BOOTH_TOPIC) + str(self.topic_id))
 
         try:
             # line below should not have the () after the function!
@@ -223,7 +238,6 @@ driver = Driver()
 driver.add_machine(booth_machine)
 
 myclient = MQTT_Client_1()
-
 booth.mqtt_client = myclient.client
 
 myclient.stm_driver = driver
