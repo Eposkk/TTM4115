@@ -52,14 +52,13 @@ class DB:
         while str(id) in self.charging_stations:
             id += 1
         return str(id)
-    
+
     def get_available_booths(self):
         available = 0
         for booth in self.charging_stations:
             if self.charging_stations[booth]["status"] == "ready":
                 available += 1
         return available
-
 
 
 class Station:
@@ -69,7 +68,22 @@ class Station:
         self.mqtt_client = None
 
     def _send_status(self):
-        print("This should send status to all listeners apps")
+
+        self.mqtt_client.publish(
+            STATION_TOPIC,
+            json.dumps(
+                {
+                    "msg": "available_chargers",
+                    "data": [
+                        {
+                            "id": booth,
+                            "status": self.DB.charging_stations[booth]["status"],
+                        }
+                        for booth in self.DB.charging_stations
+                    ],
+                }
+            ),
+        )
 
     def im_occupied(self, *args):
         id = args[0]
@@ -91,7 +105,9 @@ class Station:
 
     def im_error(self):
         print("Station has an error")
-        self.mqtt_client.publish(STATION_TOPIC + "/info", json.dumps({"msg": "Station is down"}))
+        self.mqtt_client.publish(
+            STATION_TOPIC + "/info", json.dumps({"msg": "Station is down"})
+        )
         self._send_status()
 
     def register_booth(self, *args):
@@ -108,10 +124,24 @@ class Station:
         id = args[0]
         self.DB.remove_booth(id)
         self._send_status()
-    
+
     def get_available_booths(self):
-        self.mqtt_client.publish(STATION_TOPIC + "/info", json.dumps({"total": str(len(self.DB.charging_stations)),
-                                                             "available": str(self.DB.get_available_booths())}))
+
+        self.mqtt_client.publish(
+            STATION_TOPIC,
+            json.dumps(
+                {
+                    "msg": "available_chargers",
+                    "data": [
+                        {
+                            "id": booth,
+                            "status": self.DB.charging_stations[booth]["status"],
+                        }
+                        for booth in self.DB.charging_stations
+                    ],
+                }
+            ),
+        )
 
 
 # initial transition
@@ -158,7 +188,7 @@ t6 = {
     "target": "operative",
     "effect": "remove_booth(*)",
 }
-t6 = {
+t7 = {
     "trigger": "status",
     "source": "operative",
     "target": "operative",
@@ -237,7 +267,7 @@ class MQTT_Client_1:
 
 station = Station()
 station_machine = Machine(
-    transitions=[t0, t1, t2, t3, t4, t5, t6],
+    transitions=[t0, t1, t2, t3, t4, t5, t6, t7],
     states=[s, s1],
     obj=station,
     name="station",

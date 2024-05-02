@@ -15,7 +15,7 @@ class Booth:
         self.mw_effect = mw_effect
         self.one_time_id = uuid.uuid4()
         self.mqtt_client = None
-        self.wanted_percentage = 0
+        self.wanted_percentage: int = 0
         print("onetimeid" + str(self.one_time_id))
 
     def send_message(self, msg):
@@ -65,10 +65,21 @@ class Booth:
 
     def releasePwR(self):
         print("releasePwR triggered!")
+        self.mqtt_client.publish(
+            STATION_TOPIC + "/" + self.Id,
+            json.dumps(
+                {
+                    "msg": "release_power",
+                }
+            ),
+        )
     
     def request(self, *args):
-        self.wanted_percentage = args[0]
+        print(args)
+        self.wanted_percentage = int(args[0])
+        self.kWh = int(args[1])
         print(self.wanted_percentage)
+        print(self.kWh)
 
     def reset_booth(self):
         self.mqtt_client.publish(
@@ -77,7 +88,7 @@ class Booth:
 
     def init_charger(self):
         print("charger is being initiliazed")
-        battery_max_kwh = random.randint(30, 70)
+        battery_max_kwh = self.kWh
         max_percent = 40
         if self.wanted_percentage <= 40 and self.wanted_percentage > 10:
             max_percent = self.wanted_percentage - 5
@@ -86,8 +97,23 @@ class Booth:
         start_battery_kwh = math.floor(battery_max_kwh * percentage)
         charging_time = ((goal - start_battery_kwh) / self.mw_effect) * 1000 * 60 # minutes instead of hours 
         self.stm.start_timer("gn", charging_time)
+        print(charging_time)
         print(str((goal - start_battery_kwh) / self.mw_effect) + " minutes (hours) of charging")
-        print(self.stm.get_timer("gn"))
+
+        self.mqtt_client.publish(
+            STATION_TOPIC + "/" + self.Id,
+            json.dumps(
+                {
+                    "msg": "charging_started",
+                    "goal": goal,
+                    "start_battery_kwh": start_battery_kwh,
+                    "battery_max_kwh": battery_max_kwh,
+                    "charging_time": charging_time,
+                }
+            ),
+        )
+        print("charging started")
+
     
     def time_left(self):
         print("finding total time left")
@@ -223,7 +249,7 @@ class MQTT_Client_1:
             match payload["msg"]:
                 case "req":
                     print("request")
-                    self.stm_driver.send("req", "booth", args=[payload["percentage"]])
+                    self.stm_driver.send("req", "booth", args=[payload["percentage"], payload["kWh"]])
                 case "ce":
                     print("comlink established")
                     self.stm_driver.send("ce", "booth")
