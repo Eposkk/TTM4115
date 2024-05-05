@@ -104,6 +104,13 @@ class Station:
         self.DB.set_booth_status(id, "occupied")
         self._send_status()
 
+    def im_charging(self, *args):
+        id = args[0]
+        charging_time = args[1]
+        print("imCharging triggered! id: " + id)
+        self.DB.set_booth_status(id, "occupied", charging_time)
+        self._send_status()
+
     def im_down(self, *args):
         id = args[0]
         print("imDown triggered!")
@@ -131,7 +138,6 @@ class Station:
             BOOTH_TOPIC,
             json.dumps({"msg": "registered", "id": id, "one_time_id": one_time_id}),
         )
-        self._send_status()
 
     def remove_booth(self, *args):
         id = args[0]
@@ -212,6 +218,13 @@ t7 = {
     "effect": "get_available_booths",
 }
 
+t8 = {
+    "trigger": "charging_started",
+    "source": "operative",
+    "target": "operative",
+    "effect": "im_charging(*)",
+}
+
 s = {
     "name": "opeartive",
 }
@@ -271,17 +284,11 @@ class MQTT_Client_1:
                 elif payload["msg"] == "status":
                     self.stm_driver.send("status", "station")
                 elif payload["msg"] == "charging_started":
-
-                    # THis should be done in the stm now the db does not update fast enough
-                    print(
-                        "charging_started with charging time:"
-                        + str(payload["charging_time"])
+                    self.stm_driver.send(
+                        "charging_started",
+                        "station",
+                        args=[payload["id"], payload["charging_time"]],
                     )
-                    db = DB()
-                    db.set_booth_status(
-                        payload["id"], "occupied", int(payload["charging_time"])
-                    )
-                    self.stm_driver.send("status", "station")
 
                 else:
                     print("This should not happen")
@@ -304,7 +311,7 @@ class MQTT_Client_1:
 
 station = Station()
 station_machine = Machine(
-    transitions=[t0, t1, t2, t3, t4, t5, t6, t7],
+    transitions=[t0, t1, t2, t3, t4, t5, t6, t7, t8],
     states=[s, s1],
     obj=station,
     name="station",

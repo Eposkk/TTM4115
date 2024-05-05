@@ -7,6 +7,50 @@ import paho.mqtt.client as mqtt
 from env import STATION_TOPIC, BOOTH_TOPIC, BROKER, PORT
 import uuid
 import atexit
+try:
+    from sense_hat import SenseHat
+except ImportError:
+    print("Sense HAT not found, nut using sensheat")
+
+import threading
+import time
+
+def start_display_thread(duration):
+    thread = threading.Thread(target=update_display, args=(duration,))
+    thread.start()
+    return thread
+
+def update_display(total_time):
+    try:
+        sense = SenseHat()
+        # Define colors
+        green = (0, 255, 0)  # Green
+        off = (0, 0, 0)  # Off/black
+        total_dots = 64
+        
+        # Initial display update
+        sense.set_pixels([green] * total_dots)
+
+        # Timer loop
+        start_time = time.time()
+        while True:
+            elapsed_time = time.time() - start_time
+            if elapsed_time > total_time:
+                break
+            remaining_time = total_time - elapsed_time
+            
+            # Calculate the number of dots to turn off
+            dots_to_turn_off = int((elapsed_time / total_time) * total_dots)
+            
+            # Update the display
+            screen_pixels = [off if i < dots_to_turn_off else green for i in range(total_dots)]
+            sense.set_pixels(screen_pixels)
+            time.sleep(0.1)  # Adjust for smoother updates
+
+        # Clear the display at the end
+        sense.clear()
+    except Exception as e:
+        print("Failed to update Sense HAT display or Sense HAT not found:", e)
 
 
 class Booth:
@@ -73,6 +117,7 @@ class Booth:
                 }
             ),
         )
+        self.stm.start_timer("cl", 5000)
     
     def request(self, *args):
         print(args)
@@ -124,6 +169,8 @@ class Booth:
             ),
         )
         print("charging started")
+        start_display_thread(charging_time)
+        print("display thread started")
 
     
     def time_left(self):
@@ -168,6 +215,9 @@ t5 = {"trigger": "ce", "source": "connecting", "target": "charging", "effect": "
 t6 = {"trigger": "gn", "source": "charging", "target": "goal_reached"}
 
 t7 = {"trigger": "cl", "source": "goal_reached", "target": "standby"}
+
+t7 = {"trigger": "cl", "source": "goal_reached", "target": "standby"}
+
 
 t8 = {
     "trigger": "registered",
@@ -316,3 +366,6 @@ myclient.stm_driver = driver
 
 myclient.start(BROKER, PORT)
 driver.start()
+
+
+

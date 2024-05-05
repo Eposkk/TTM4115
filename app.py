@@ -82,6 +82,7 @@ def end_session():
 
 
 def request_stations():
+    print("Requesting stations...")
     client.publish(
             STATION_TOPIC,
             json.dumps({"msg": "status"}),
@@ -222,8 +223,7 @@ def on_shutdown():
 
 root.protocol("WM_DELETE_WINDOW", on_shutdown)
 
-
+root.after(3000, request_stations)
 # Run the Tkinter main loop
 root.mainloop()
 
-root.after(1000, request_stations)
