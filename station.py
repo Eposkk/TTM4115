@@ -226,7 +226,7 @@ t8 = {
 }
 
 s = {
-    "name": "opeartive",
+    "name": "operative",
 }
 
 s1 = {
