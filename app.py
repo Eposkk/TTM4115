@@ -42,16 +42,22 @@ def on_message(client, userdata, msg):
                         key=lambda x: int(x)
                     )
                 
-                time_to_available = next(
-                    (int(charger['charging_time']) for charger in data if charger['status'] != 'down' and 'charging_time' in charger),
-                    0 
-                )
-                update_next_available_label(f"Next Available: {time_to_available} min")
+               # Extract valid charging times into a list
+                valid_charging_times = [
+                    int(float(charger['charging_time'])) 
+                    for charger in data 
+                    if charger['status'] != 'down' and 'charging_time' in charger
+                ]
+
+                # Find the minimum charging time or set to None if no valid chargers are available
+                time_to_available = min(valid_charging_times) if valid_charging_times else 0
+
+                update_next_available_label(f"Next Available: {time_to_available / 1000 / 60} min")
 
                 print(ready_chargers, out_of_order_chargers)
                 update_available_chargers_label(f"Available Chargers: {len(ready_chargers)}/{len(data)}")
                 update_charger_options(ready_chargers)
-                update_out_of_order_label('Chargers oof: ' + ', '.join(out_of_order_chargers))
+                update_out_of_order_label('Chargers down (id): ' + ', '.join(out_of_order_chargers))
                 
     elif (str(msg.topic).startswith(BOOTH_TOPIC)):
         match payload["msg"]:
@@ -138,7 +144,8 @@ charging_time_label = tk.Label(root, text="Time until charging complete:")
 time_display = tk.Label(root, text="-- min")
 details_label = tk.Label(root, text=default_message)
 input_label = tk.Label(root, text="Insert percentage")
-charger_selecter = tk.OptionMenu(root, selected_charger, "Charger 1", "Charger 2", "Charger 3")
+charger_selecter = tk.OptionMenu(root, selected_charger, "No chargers available")
+charger_selecter.config(state="disabled")
 
 def validate_number(P):
     """ Validate the entry field to accept only numbers between 0 and 100. """
@@ -157,7 +164,7 @@ validate_command = root.register(validate_number)
 
 # Create and grid the Entry widget with validation for number input
 number_entry = tk.Entry(root, validate="key", validatecommand=(validate_command, '%P'))
-
+number_entry.insert(0, "50") 
 
 
 # Start and End session buttons
@@ -205,7 +212,9 @@ def update_charger_options(new_options):
     
     # If no new options provided, revert to default list
     if not new_options:
-        new_options = ["Charger 1", "Charger 2", "Charger 3"]
+        new_options = ["No chargers available"]
+        charger_selecter.config(state="disabled")
+
         
     # Add new options
     for option in new_options:
@@ -214,6 +223,7 @@ def update_charger_options(new_options):
     # Set the first option as default if new options are provided
     if new_options:
         selected_charger.set(new_options[0])
+        charger_selecter.config(state="active")
 
 def on_shutdown():
     # Code to run before shutting down

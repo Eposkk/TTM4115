@@ -106,18 +106,6 @@ class Booth:
             STATION_TOPIC,
             json.dumps({"msg": "register_booth", "one_time_id": str(self.one_time_id)}),
         )
-
-    def releasePwR(self):
-        print("releasePwR triggered!")
-        self.mqtt_client.publish(
-            STATION_TOPIC + "/" + self.Id,
-            json.dumps(
-                {
-                    "msg": "release_power",
-                }
-            ),
-        )
-        self.stm.start_timer("cl", 5000)
     
     def request(self, *args):
         print(args)
@@ -264,7 +252,7 @@ s2 = {
 
 s3 = {"name": "connecting", "entry": "start_timer('ce', 5000)"}
 
-s4 = {"name": "goal_reached", "entry": "releasePwR"}
+s4 = {"name": "goal_reached", "entry": "start_timer('cl', 5000)"}
 
 
 class MQTT_Client_1:
