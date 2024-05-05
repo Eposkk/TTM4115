@@ -42,8 +42,10 @@ def on_message(client, userdata, msg):
                         key=lambda x: int(x)
                     )
                 
-                time_to_available = min(int(charger['charging_time']) for charger in data if charger['status'] != 'down' and 'charging_time' in charger)
-
+                time_to_available = next(
+                    (int(charger['charging_time']) for charger in data if charger['status'] != 'down' and 'charging_time' in charger),
+                    0 
+                )
                 update_next_available_label(f"Next Available: {time_to_available} min")
 
                 print(ready_chargers, out_of_order_chargers)
@@ -223,7 +225,7 @@ def on_shutdown():
 
 root.protocol("WM_DELETE_WINDOW", on_shutdown)
 
-root.after(3000, request_stations)
+root.after(10, request_stations)
 # Run the Tkinter main loop
 root.mainloop()
 
