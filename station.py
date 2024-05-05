@@ -10,7 +10,6 @@ from env import STATION_TOPIC, BOOTH_TOPIC, BROKER, PORT, DB_PATH
 
 
 class DB:
-    # Write a simple DB driver for reading and writing to a JSON file
     def __init__(self):
         self.charging_stations = {}
         print("DB_PATH: " + str(DB_PATH))
@@ -301,7 +300,6 @@ class MQTT_Client_1:
         self.client.subscribe(STATION_TOPIC)
 
         try:
-            # line below should not have the () after the function!
             thread = Thread(target=self.client.loop_forever)
             thread.start()
         except KeyboardInterrupt:

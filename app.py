@@ -19,10 +19,8 @@ def on_connect(client, userdata, flags, rc):
     print("Connecting to {}:{}".format(STATION_TOPIC, PORT))
 
 
-# Callback when a message is received from the MQTT broker
 def on_message(client, userdata, msg):
     global selected_charger_id
-    # Update the UI based on the MQTT message
     print(f"Received message: {msg}")
     payload = json.loads(msg.payload)
     print(f"Payload: {payload}")
@@ -49,7 +47,7 @@ def on_message(client, userdata, msg):
                     if charger['status'] != 'down' and 'charging_time' in charger
                 ]
 
-                # Find the minimum charging time or set to None if no valid chargers are available
+                # Find the minimum charging time or set to 0 if no valid chargers are available
                 time_to_available = min(valid_charging_times) if valid_charging_times else 0
 
                 update_next_available_label(f"Next Available: {time_to_available / 1000 / 60} min")
@@ -67,7 +65,6 @@ def on_message(client, userdata, msg):
                 update_details_label("Charging completed")
                 charger_selecter.config(state="normal")
 
-# Function to publish a message to start charging
 def start_charging():
     global selected_charger_id
     charger_id = selected_charger.get()
@@ -81,7 +78,6 @@ def start_charging():
 
 
 
-# Function to publish a message to end the charging session
 def end_session():
     client.publish(BOOTH_TOPIC + "/" + selected_charger.get(), json.dumps({"msg": "gn"}))
     charger_selecter.config(state="normal")
@@ -128,9 +124,8 @@ except Exception as e:
     messagebox.showerror("MQTT Connection", f"Failed to connect to MQTT Broker: {e}")
     exit(1)
 
-client.loop_start()  # Start the loop once
+client.loop_start() 
 
-# Initialize and run the Tkinter main loop
 root = tk.Tk()
 root.title("Charging App UI")
 
@@ -149,7 +144,7 @@ charger_selecter.config(state="disabled")
 
 def validate_number(P):
     """ Validate the entry field to accept only numbers between 0 and 100. """
-    if P.strip() == "":  # Allow the entry to be cleared
+    if P.strip() == "":  
         return True
     try:
         value = int(P)
@@ -159,15 +154,12 @@ def validate_number(P):
         pass
     return False
 
-# Register the validator function with the Tkinter window
 validate_command = root.register(validate_number)
 
-# Create and grid the Entry widget with validation for number input
 number_entry = tk.Entry(root, validate="key", validatecommand=(validate_command, '%P'))
 number_entry.insert(0, "50") 
 
 
-# Start and End session buttons
 start_button = tk.Button(
     root, text="START CHARGING", command=start_charging, bg="green"
 )
@@ -190,7 +182,6 @@ details_label.grid(row=7, column=0, columnspan=2)
 charger_selecter.grid(row=2, column=0, columnspan=2)
 
 
-# Set default value
 selected_charger.set("Charger 1")
 
 def update_next_available_label(text):
@@ -199,7 +190,6 @@ def update_next_available_label(text):
 def update_out_of_order_label(text):
     out_of_order_label.config(text=text)
 
-# Function to update the details label
 def update_details_label(text):
     details_label.config(text=text)
 
@@ -207,7 +197,6 @@ def update_available_chargers_label(text):
     available_chargers_label.config(text=text)
 
 def update_charger_options(new_options):
-    # Clear the current options
     charger_selecter['menu'].delete(0, 'end')
     
     # If no new options provided, revert to default list
@@ -226,16 +215,13 @@ def update_charger_options(new_options):
         charger_selecter.config(state="active")
 
 def on_shutdown():
-    # Code to run before shutting down
     print("Shutting down...")
     client.publish(BOOTH_TOPIC + "/" + selected_charger.get(), "err")
     client.disconnect()
     root.destroy()
-    # Add your code here
 
 root.protocol("WM_DELETE_WINDOW", on_shutdown)
 
 root.after(10, request_stations)
-# Run the Tkinter main loop
 root.mainloop()
 

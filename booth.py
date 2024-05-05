@@ -23,15 +23,12 @@ def start_display_thread(duration):
 def update_display(total_time):
     try:
         sense = SenseHat()
-        # Define colors
-        green = (0, 255, 0)  # Green
-        off = (0, 0, 0)  # Off/black
+        green = (0, 255, 0)
+        off = (0, 0, 0)  
         total_dots = 64
         
-        # Initial display update
         sense.set_pixels([green] * total_dots)
 
-        # Timer loop
         start_time = time.time()
         while True:
             elapsed_time = time.time() - start_time
@@ -39,15 +36,12 @@ def update_display(total_time):
                 break
             remaining_time = total_time - elapsed_time
             
-            # Calculate the number of dots to turn off
             dots_to_turn_off = int((elapsed_time / total_time) * total_dots)
             
-            # Update the display
             screen_pixels = [off if i < dots_to_turn_off else green for i in range(total_dots)]
             sense.set_pixels(screen_pixels)
-            time.sleep(0.1)  # Adjust for smoother updates
+            time.sleep(0.1) 
 
-        # Clear the display at the end
         sense.clear()
     except Exception as e:
         print("Failed to update Sense HAT display or Sense HAT not found:", e)
