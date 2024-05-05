@@ -10,9 +10,9 @@ import atexit
 
 
 class Booth:
-    def __init__(self, mw_effect = 30):
+    def __init__(self, kw_effect = 30):
         self.Id = None
-        self.mw_effect = mw_effect
+        self.kw_effect = kw_effect
         self.one_time_id = uuid.uuid4()
         self.mqtt_client = None
         self.wanted_percentage: int = 0
@@ -95,13 +95,24 @@ class Booth:
         percentage = random.randint(5, max_percent) / 100
         goal = math.floor(battery_max_kwh * self.wanted_percentage / 100)
         start_battery_kwh = math.floor(battery_max_kwh * percentage)
-        charging_time = ((goal - start_battery_kwh) / self.mw_effect) * 1000 * 60 # minutes instead of hours 
+        charging_time = ((goal - start_battery_kwh) / self.kw_effect) * 1000 * 60 # minutes instead of hours 
         self.stm.start_timer("gn", charging_time)
         print(charging_time)
-        print(str((goal - start_battery_kwh) / self.mw_effect) + " minutes (hours) of charging")
+        print(str((goal - start_battery_kwh) / self.kw_effect) + " minutes (hours) of charging")
 
         self.mqtt_client.publish(
-            STATION_TOPIC + "/" + self.Id,
+            STATION_TOPIC ,
+            json.dumps(
+                {
+                    "msg": "charging_started",
+                    "charging_time": charging_time,
+                    "id": self.Id,
+                }
+            ),
+        )
+
+        self.mqtt_client.publish(
+            BOOTH_TOPIC + "/" + self.Id,
             json.dumps(
                 {
                     "msg": "charging_started",

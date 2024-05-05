@@ -7,6 +7,7 @@ from env import STATION_TOPIC, BOOTH_TOPIC, BROKER, PORT
 
 default_message = "See payment terminal after end session"
 after_id = None
+selected_charger_id = None
 
 
 def on_connect(client, userdata, flags, rc):
@@ -20,41 +21,54 @@ def on_connect(client, userdata, flags, rc):
 
 # Callback when a message is received from the MQTT broker
 def on_message(client, userdata, msg):
+    global selected_charger_id
     # Update the UI based on the MQTT message
     print(f"Received message: {msg}")
     payload = json.loads(msg.payload)
     print(f"Payload: {payload}")
-    match payload["msg"]:
-        case "available_chargers":
-            data = payload['data']
-            ready_chargers = sorted(
-                    [charger['id'] for charger in data if charger['status'] == 'ready'],
-                    key=lambda x: int(x)
-                )
-                
-            out_of_order_chargers = sorted(
-                    [charger['id'] for charger in data if charger['status'] == 'out_of_order'],
-                    key=lambda x: int(x)
-                )
-            print(ready_chargers, out_of_order_chargers)
-            update_available_chargers_label(f"Available Chargers: {len(ready_chargers)}/{len(data)}")
-            update_charger_options(ready_chargers)
-            update_out_of_order_label('Chargers oof: ' + ', '.join(out_of_order_chargers))
 
-        case "charging_started":
-            update_charging_label(round(float(payload["charging_time"]) / 1000, 2)) 
-        case "goal_reached":
-            update_details_label("Charging completed")
-            charger_selecter.config(state="normal")
+    if (msg.topic == STATION_TOPIC):
+        match payload["msg"]:
+            case "available_chargers":
+                data = payload['data']
+                print(data)
+                ready_chargers = sorted(
+                        [charger['id'] for charger in data if charger['status'] == 'ready'],
+                        key=lambda x: int(x)
+                    )
+                    
+                out_of_order_chargers = sorted(
+                        [charger['id'] for charger in data if charger['status'] == 'down'],
+                        key=lambda x: int(x)
+                    )
+                
+                time_to_available = min(int(charger['charging_time']) for charger in data if charger['status'] != 'down' and 'charging_time' in charger)
+
+                update_next_available_label(f"Next Available: {time_to_available} min")
+
+                print(ready_chargers, out_of_order_chargers)
+                update_available_chargers_label(f"Available Chargers: {len(ready_chargers)}/{len(data)}")
+                update_charger_options(ready_chargers)
+                update_out_of_order_label('Chargers oof: ' + ', '.join(out_of_order_chargers))
+                
+    elif (str(msg.topic).startswith(BOOTH_TOPIC)):
+        match payload["msg"]:
+            case "charging_started":
+                update_charging_label(round(float(payload["charging_time"]) / 1000, 2)) 
+            case "goal_reached":
+                update_details_label("Charging completed")
+                charger_selecter.config(state="normal")
 
 # Function to publish a message to start charging
 def start_charging():
+    global selected_charger_id
     charger_id = selected_charger.get()
     client.publish(BOOTH_TOPIC + "/" + charger_id, json.dumps({"msg": "req", "percentage": number_entry.get(), "kWh": 100}))
     update_details_label("Waiting for charging to start")
     print("Start Charging", "Sent start command to Booth.")
-    client.subscribe(STATION_TOPIC + "/" + charger_id)
+    client.subscribe(BOOTH_TOPIC + "/" + charger_id)
     charger_selecter.config(state="disabled")
+    selected_charger_id = charger_id
     
 
 
@@ -82,6 +96,7 @@ def update_charging_label(time_remaining):
         after_id = root.after(1000, update_charging_label, time_remaining - 1)
     else:
         update_details_label("Charging complete. " + default_message)
+        time_display.config(text="-- min")
 
 def cancel_charging_update():
     global after_id
@@ -112,8 +127,8 @@ root.title("Charging App UI")
 
 selected_charger = tk.StringVar(root)
 
-
 # UI elements
+next_available_label = tk.Label(root, text="Next Available: 0 min")
 available_chargers_label = tk.Label(root, text="Available Chargers: 12/20")
 out_of_order_label = tk.Label(root, text="#7 out of order", fg="red")
 charging_time_label = tk.Label(root, text="Time until charging complete:")
@@ -155,6 +170,7 @@ end_button = tk.Button(root, text="END SESSION", command=end_session, bg="red")
 available_chargers_label.grid(row=0, column=0, sticky="W")
 out_of_order_label.grid(row=0, column=1, sticky="E")
 charging_time_label.grid(row=3, column=0, columnspan=2)
+next_available_label.grid(row=1, column=0, columnspan=2)
 time_display.grid(row=4, column=0, columnspan=2)
 input_label.grid(row=5, column=0, padx=10)
 number_entry.grid(row=5, column=1)
@@ -166,6 +182,9 @@ charger_selecter.grid(row=2, column=0, columnspan=2)
 
 # Set default value
 selected_charger.set("Charger 1")
+
+def update_next_available_label(text):
+    next_available_label.config(text=text)
 
 def update_out_of_order_label(text):
     out_of_order_label.config(text=text)

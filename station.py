@@ -29,15 +29,25 @@ class DB:
             json.dump(self.charging_stations, file)
 
     def add_booth(self, booth_id):
-        self.charging_stations[booth_id] = {"status": "free"}
+        self.charging_stations[booth_id] = {"status": "ready", "charging_time": 0}
         self.save()
 
     def remove_booth(self, booth_id):
         del self.charging_stations[booth_id]
         self.save()
 
-    def set_booth_status(self, booth_id, status):
+    def set_booth_status(self, booth_id, status, charging_time=0):
         self.charging_stations[booth_id]["status"] = status
+        self.charging_stations[booth_id]["charging_time"] = str(charging_time)
+        print(
+            "Setting booth status to: "
+            + status
+            + " with charging time: "
+            + str(charging_time)
+            + " for booth: "
+            + booth_id
+        )
+        print(self.charging_stations)
         self.save()
 
     def get_booth_status(self, booth_id):
@@ -78,6 +88,9 @@ class Station:
                         {
                             "id": booth,
                             "status": self.DB.charging_stations[booth]["status"],
+                            "charging_time": self.DB.charging_stations[booth][
+                                "charging_time"
+                            ],
                         }
                         for booth in self.DB.charging_stations
                     ],
@@ -126,7 +139,8 @@ class Station:
         self._send_status()
 
     def get_available_booths(self):
-
+        print("Getting available booths")
+        print(self.DB.charging_stations)
         self.mqtt_client.publish(
             STATION_TOPIC,
             json.dumps(
@@ -136,6 +150,9 @@ class Station:
                         {
                             "id": booth,
                             "status": self.DB.charging_stations[booth]["status"],
+                            "charging_time": self.DB.charging_stations[booth][
+                                "charging_time"
+                            ],
                         }
                         for booth in self.DB.charging_stations
                     ],
@@ -216,38 +233,58 @@ class MQTT_Client_1:
 
     def on_message(self, client, userdata, msg):
 
-        payload = json.loads(msg.payload)
+        topic = str(msg.topic)
+        if topic == STATION_TOPIC:
+            payload = json.loads(msg.payload)
 
-        print("on_message(): topic: {}, message: {}".format(msg.topic, payload["msg"]))
-        if (
-            payload["msg"] != "station"
-            and payload["msg"] != "occupied"
-            and payload["msg"] != "down"
-            and payload["msg"] != "ready"
-            and payload["msg"] != "register_booth"
-            and payload["msg"] != "remove_booth"
-            and payload["msg"] != "status"
-        ):
-            print(payload["msg"] + " is not a valid message ignoring")
+            print(
+                "on_message(): topic: {}, message: {}".format(msg.topic, payload["msg"])
+            )
+            if (
+                payload["msg"] != "station"
+                and payload["msg"] != "occupied"
+                and payload["msg"] != "down"
+                and payload["msg"] != "ready"
+                and payload["msg"] != "register_booth"
+                and payload["msg"] != "remove_booth"
+                and payload["msg"] != "status"
+                and payload["msg"] != "charging_started"
+            ):
+                print(payload["msg"] + " is not a valid message ignoring")
 
-        else:
-
-            if payload["msg"] == "occupied":
-                self.stm_driver.send("occupied", "station", args=[payload["id"]])
-            elif payload["msg"] == "down":
-                self.stm_driver.send("down", "station", args=[payload["id"]])
-            elif payload["msg"] == "ready":
-                self.stm_driver.send("ready", "station", args=[payload["id"]])
-            elif payload["msg"] == "register_booth":
-                self.stm_driver.send(
-                    "register_booth", "station", args=[payload["one_time_id"]]
-                )
-            elif payload["msg"] == "remove_booth":
-                self.stm_driver.send("remove_booth", "station", args=[payload["id"]])
-            elif payload["msg"] == "status":
-                self.stm_driver.send("status", "station")
             else:
-                print("This should not happen")
+
+                if payload["msg"] == "occupied":
+                    self.stm_driver.send("occupied", "station", args=[payload["id"]])
+                elif payload["msg"] == "down":
+                    self.stm_driver.send("down", "station", args=[payload["id"]])
+                elif payload["msg"] == "ready":
+                    self.stm_driver.send("ready", "station", args=[payload["id"]])
+                elif payload["msg"] == "register_booth":
+                    self.stm_driver.send(
+                        "register_booth", "station", args=[payload["one_time_id"]]
+                    )
+                elif payload["msg"] == "remove_booth":
+                    self.stm_driver.send(
+                        "remove_booth", "station", args=[payload["id"]]
+                    )
+                elif payload["msg"] == "status":
+                    self.stm_driver.send("status", "station")
+                elif payload["msg"] == "charging_started":
+
+                    # THis should be done in the stm now the db does not update fast enough
+                    print(
+                        "charging_started with charging time:"
+                        + str(payload["charging_time"])
+                    )
+                    db = DB()
+                    db.set_booth_status(
+                        payload["id"], "occupied", int(payload["charging_time"])
+                    )
+                    self.stm_driver.send("status", "station")
+
+                else:
+                    print("This should not happen")
 
     def start(self, broker, port):
 
